@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  pardos-admin:
+    build: .
+    ports:
+      - "5174:5174"
+    volumes:
+      - ./src:/app/src
+      - ./public:/app/public
+    environment:
+      - NODE_ENV=development
+    stdin_open: true
+    tty: true
