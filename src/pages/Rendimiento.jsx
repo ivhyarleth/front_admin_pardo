@@ -169,14 +169,6 @@ const Rendimiento = () => {
                         <div className="text-right text-sm mt-1">TOTAL SOLES</div>
                       </div>
 
-                      {/* Estadística: Tiempo */}
-                      <div className="bg-pardos-rust p-4 rounded-lg text-white">
-                        <div className="flex items-center justify-between">
-                          <span className="font-spartan font-bold text-sm">TIEMPO PROMEDIO DE PREPARACIÓN Y ENTREGA</span>
-                          <span className="font-spartan font-black text-2xl">{stats.tiempo}</span>
-                        </div>
-                        <div className="text-right text-sm mt-1">TIEMPO PROMEDIO</div>
-                      </div>
 
                       {/* Top 3 Productos */}
                       <div className="bg-pardos-rust p-4 rounded-lg text-white">
