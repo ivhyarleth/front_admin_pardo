@@ -2,7 +2,7 @@
 // ============================================
 
 // Base URL del API Gateway (configurar en .env)
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://tu-api-gateway.execute-api.us-east-1.amazonaws.com/prod';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://sekbehf5na.execute-api.us-east-1.amazonaws.com/dev';
 
 // ============================================
 // 📍 ENDPOINTS
