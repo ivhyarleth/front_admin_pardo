@@ -7,6 +7,7 @@ const Login = ({ onLogin }) => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rolSeleccionado, setRolSeleccionado] = useState(null); // 'admin' o 'trabajador'
+  const [tenantIdSede, setTenantIdSede] = useState('pardo_miraflores'); // Sede seleccionada
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
@@ -19,42 +20,41 @@ const Login = ({ onLogin }) => {
       return;
     }
 
+    // Si es trabajador, validar que haya seleccionado una sede
+    // Si es admin, la sede es opcional (puede ser admin general con tenant_id_sede: null)
+    if (rolSeleccionado === 'trabajador') {
+      if (!tenantIdSede) {
+        setError('Por favor selecciona una sede');
+        return;
+      }
+    }
+
     setLoading(true);
     setError('');
     
     try {
-      // ============================================
-      // 🔌 CONEXIÓN CON API
-      // ============================================
-      // Descomenta cuando tengas el backend listo:
+      // Para admin, permitir enviar null si no se seleccionó sede (admin general)
+      // Para trabajador, siempre enviar la sede seleccionada
+      const sedeParaEnviar = rolSeleccionado === 'admin' && !tenantIdSede ? null : tenantIdSede;
       
-      // const data = await loginAPI(email, password, rolSeleccionado);
-      // const userData = {
-      //   email: data.user.email,
-      //   nombre: data.user.nombre,
-      //   rol: data.user.rol,
-      //   id: data.user.id
-      // };
-      // onLogin(userData);
+      // Llamar al API real
+      const data = await loginAPI(email, password, 'staff', sedeParaEnviar);
       
-      // ============================================
-      // 📝 SIMULACIÓN (quitar cuando tengas el backend)
-      // ============================================
-      // Simulación temporal - REEMPLAZAR CON LA LLAMADA API DE ARRIBA
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simular delay de red
-      
+      // Preparar datos del usuario para el contexto
       const userData = {
-        email,
-        nombre: email.split('@')[0],
-        rol: rolSeleccionado,
-        id: rolSeleccionado === 'trabajador' ? `trab-${Math.floor(Math.random() * 10)}` : 'admin-1'
+        email: data.user.email,
+        nombre: data.user.name || data.user.email.split('@')[0],
+        rol: data.user.staff_tier === 'admin' ? 'admin' : 'trabajador',
+        id: data.user.user_id,
+        staff_tier: data.user.staff_tier,
+        tenant_id_sede: data.user.tenant_id_sede,
+        permissions: data.user.permissions || []
       };
       
       onLogin(userData);
-      // ============================================
       
       // Redirigir según el rol
-      if (rolSeleccionado === 'admin') {
+      if (userData.rol === 'admin') {
         navigate('/dashboard');
       } else {
         navigate('/mis-pedidos');
@@ -122,6 +122,30 @@ const Login = ({ onLogin }) => {
               </button>
             </div>
           </div>
+
+          {/* Selección de Sede (solo para staff) */}
+          {rolSeleccionado && (
+            <div className="mb-6">
+              <label className="text-white font-spartan font-bold mb-3 block text-center">
+                SELECCIONA LA SEDE {rolSeleccionado === 'admin' && <span className="text-xs text-white/70">(Opcional para Admin General)</span>}
+              </label>
+              <select
+                value={tenantIdSede}
+                onChange={(e) => setTenantIdSede(e.target.value)}
+                className="w-full px-6 py-4 rounded-full font-lato text-gray-700 focus:outline-none focus:ring-4 focus:ring-pardos-orange"
+                required={rolSeleccionado === 'trabajador'}
+              >
+                <option value="">{rolSeleccionado === 'admin' ? 'Admin General (Todas las sedes)' : 'Selecciona una sede'}</option>
+                <option value="pardo_miraflores">Pardo Miraflores</option>
+                <option value="pardo_surco">Pardo Surco</option>
+              </select>
+              {rolSeleccionado === 'admin' && (
+                <p className="text-white/70 text-xs mt-2 text-center">
+                  💡 Deja en blanco si eres Admin General (ves todas las sedes)
+                </p>
+              )}
+            </div>
+          )}
           
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>

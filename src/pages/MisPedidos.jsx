@@ -1,96 +1,278 @@
 import { useEffect, useState } from 'react';
-import { usePedidos } from '../context/PedidosContext';
-import { getAssignedOrdersAPI, updateOrderStatusAPI } from '../config/api';
+import { getMyAssignmentsAPI, chefConfirmaAPI, despachadoConfirmaAPI, motorizadoConfirmaAPI, getOrderStatusAPI, getOrderByIdAPI, getUserData, getSelectedSede } from '../config/api';
+import { getEstadoColor } from '../lib/statusColors';
+import { ToastContainer } from '../components/ui/Toast';
+import { Loading } from '../components/ui/Loading';
 
 const MisPedidos = ({ user }) => {
-  const { getPedidosTrabajador, ESTADOS, cambiarEstadoPedido, formatearTiempo } = usePedidos();
+  const [pedidos, setPedidos] = useState([]);
   const [loading, setLoading] = useState(false);
-  
-  const misPedidos = getPedidosTrabajador(user.id);
+  const [refreshing, setRefreshing] = useState(false);
+  const [toasts, setToasts] = useState([]);
+  const [procesando, setProcesando] = useState({}); // { pedidoId: true/false }
+  const [historialDialog, setHistorialDialog] = useState({ open: false, pedido: null, historial: [] });
 
-  // ============================================
-  // 🔌 CARGAR PEDIDOS DEL BACKEND
-  // ============================================
   useEffect(() => {
     loadMyOrders();
-  }, [user.id]);
+  }, [user?.id]);
 
   const loadMyOrders = async () => {
     setLoading(true);
     try {
-      // ============================================
-      // Descomenta cuando tengas el backend listo:
-      // ============================================
+      const sede = getSelectedSede();
+      const orders = await getMyAssignmentsAPI(null, sede); // null = todos los tipos
       
-      // const orders = await getAssignedOrdersAPI(user.id);
-      // setPedidos(orders);  // Actualizar en context
+      // Debug: Ver qué viene del backend
+      console.log('📦 Pedidos recibidos del backend:', orders);
       
-      // ============================================
-      // Por ahora usa datos del Context (mock)
-      // ============================================
+      // Transformar pedidos del backend
+      const pedidosTransformados = orders.map(pedido => {
+        const pedidoTransformado = {
+          id: pedido.pedido_id,
+          pedido_id: pedido.pedido_id,
+          horaGeneracion: new Date(pedido.fecha_inicio).toLocaleTimeString('es-PE'),
+          fecha_inicio: pedido.fecha_inicio,
+          sede: pedido.tenant_id === 'pardo_miraflores' ? 'Pardo Miraflores' : 
+                pedido.tenant_id === 'pardo_surco' ? 'Pardo Surco' : pedido.tenant_id,
+          tenant_id: pedido.tenant_id,
+          productos: pedido.productos || [],
+          status: mapearEstadoBackend(pedido.estado),
+          estado_backend: pedido.estado,
+          tiempoTotal: calcularTiempoTotal(pedido),
+          createdAt: new Date(pedido.fecha_inicio).getTime(),
+          mi_rol: pedido.mi_rol || {}
+        };
+        
+        // Debug: Ver el pedido transformado
+        console.log('🔄 Pedido transformado:', pedidoTransformado);
+        
+        return pedidoTransformado;
+      });
       
+      setPedidos(pedidosTransformados);
     } catch (error) {
       console.error('Error cargando pedidos:', error);
+      addToast('Error al cargar pedidos: ' + (error.message || 'Error desconocido'), 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  const getStatusInfo = (status) => {
-    const statusMap = {
-      'Pedido Creado': { color: 'bg-cyan-300', text: 'PEDIDO CREADO', textColor: 'text-cyan-900' },
-      'Pedido Pendiente': { color: 'bg-yellow-300', text: 'PEDIDO PENDIENTE', textColor: 'text-yellow-900' },
-      'Pedido Preparado': { color: 'bg-green-500', text: 'PEDIDO PREPARADO', textColor: 'text-white' },
-      'Pedido Enviado': { color: 'bg-orange-500', text: 'PEDIDO ENVIADO', textColor: 'text-white' },
-      'Pedido Recibido': { color: 'bg-blue-500', text: 'PEDIDO RECIBIDO', textColor: 'text-white' }
+  const mapearEstadoBackend = (estadoBackend) => {
+    const mapeo = {
+      'pendiente': 'PEDIDO PENDIENTE',
+      'preparando': 'PEDIDO PREPARADO',
+      'despachando': 'PEDIDO ENVIADO',
+      'despachado': 'PEDIDO ENVIADO',
+      'recogiendo': 'PEDIDO ENVIADO',
+      'en_camino': 'PEDIDO ENVIADO',
+      'entregado': 'PEDIDO RECIBIDO',
+      'cancelado': 'PEDIDO CANCELADO',
+      'rechazado': 'PEDIDO CANCELADO'
     };
-    return statusMap[status] || statusMap['Pedido Creado'];
+    return mapeo[estadoBackend] || 'PEDIDO CREADO';
   };
 
-  const handleCambiarEstado = async (pedidoId, nuevoEstado) => {
-    // ============================================
-    // 🔌 LLAMAR AL BACKEND
-    // ============================================
-    try {
-      const timestamp = new Date().getTime();
-      const pedido = misPedidos.find(p => p.id === pedidoId);
-      const ultimoEstado = pedido.historialEstados[pedido.historialEstados.length - 1];
-      const duracion = timestamp - ultimoEstado.timestamp;
+  const calcularTiempoTotal = (pedido) => {
+    if (!pedido.fecha_inicio) return 0;
+    const inicio = new Date(pedido.fecha_inicio).getTime();
+    const fin = pedido.fecha_fin ? new Date(pedido.fecha_fin).getTime() : Date.now();
+    return fin - inicio;
+  };
 
-      // Descomenta cuando tengas el backend listo:
-      // await updateOrderStatusAPI(pedidoId, nuevoEstado, timestamp, duracion);
-      
-      // Actualizar estado local
-      cambiarEstadoPedido(pedidoId, nuevoEstado);
+  const formatearTiempo = (milisegundos) => {
+    const totalSegundos = Math.floor(milisegundos / 1000);
+    const horas = Math.floor(totalSegundos / 3600);
+    const minutos = Math.floor((totalSegundos % 3600) / 60);
+    const segundos = totalSegundos % 60;
+    return `${String(horas).padStart(2, '0')}:${String(minutos).padStart(2, '0')}:${String(segundos).padStart(2, '0')}`;
+  };
+
+  const getStatusInfo = (status) => {
+    // status viene como 'PEDIDO PENDIENTE', 'PEDIDO PREPARADO', etc.
+    // Necesitamos mapearlo al estado backend para obtener el color correcto
+    const statusToBackendMap = {
+      'PEDIDO CREADO': 'pendiente',
+      'PEDIDO PENDIENTE': 'pendiente',
+      'PEDIDO PREPARADO': 'preparando',
+      'PEDIDO ENVIADO': 'despachado',
+      'PEDIDO RECIBIDO': 'entregado',
+      'PEDIDO CANCELADO': 'cancelado'
+    };
+    
+    const estadoBackend = statusToBackendMap[status] || 'pendiente';
+    const colorInfo = getEstadoColor(estadoBackend);
+    
+    const statusTextMap = {
+      'PEDIDO CREADO': 'PEDIDO CREADO',
+      'PEDIDO PENDIENTE': 'PEDIDO PENDIENTE',
+      'PEDIDO PREPARADO': 'PEDIDO PREPARADO',
+      'PEDIDO ENVIADO': 'PEDIDO DESPACHADO',
+      'PEDIDO RECIBIDO': 'PEDIDO RECIBIDO',
+      'PEDIDO CANCELADO': 'PEDIDO CANCELADO'
+    };
+    
+    return {
+      color: colorInfo.bg,
+      text: statusTextMap[status] || 'PEDIDO CREADO',
+      textColor: colorInfo.text
+    };
+  };
+
+  // Función para actualizar un pedido específico
+  const actualizarPedidoEnLista = async (pedidoId, tenantId) => {
+    try {
+      const pedidoActualizado = await getOrderByIdAPI(pedidoId, tenantId);
+      if (pedidoActualizado) {
+        const pedidoTransformado = {
+          id: pedidoActualizado.pedido_id,
+          pedido_id: pedidoActualizado.pedido_id,
+          horaGeneracion: new Date(pedidoActualizado.fecha_inicio).toLocaleTimeString('es-PE'),
+          fecha_inicio: pedidoActualizado.fecha_inicio,
+          sede: pedidoActualizado.tenant_id === 'pardo_miraflores' ? 'Pardo Miraflores' : 
+                pedidoActualizado.tenant_id === 'pardo_surco' ? 'Pardo Surco' : pedidoActualizado.tenant_id,
+          tenant_id: pedidoActualizado.tenant_id,
+          productos: pedidoActualizado.productos || [],
+          status: mapearEstadoBackend(pedidoActualizado.estado),
+          estado_backend: pedidoActualizado.estado,
+          tiempoTotal: calcularTiempoTotal(pedidoActualizado),
+          createdAt: new Date(pedidoActualizado.fecha_inicio).getTime(),
+          mi_rol: pedidos.find(p => p.pedido_id === pedidoId)?.mi_rol || {}
+        };
+        
+        setPedidos(prevPedidos =>
+          prevPedidos.map(p =>
+            p.pedido_id === pedidoId ? pedidoTransformado : p
+          )
+        );
+      }
     } catch (error) {
-      console.error('Error cambiando estado:', error);
-      alert('Error al cambiar el estado del pedido');
+      console.error('Error actualizando pedido:', error);
+      // Si falla, recargar todos los pedidos como fallback
+      loadMyOrders();
     }
   };
 
-  const puedeAvanzarA = (estadoActual, nuevoEstado) => {
-    const orden = [
-      'Pedido Creado',
-      'Pedido Pendiente',
-      'Pedido Preparado',
-      'Pedido Enviado',
-      'Pedido Recibido'
-    ];
-    const indexActual = orden.indexOf(estadoActual);
-    const indexNuevo = orden.indexOf(nuevoEstado);
-    return indexNuevo === indexActual + 1;
+  // Agregar toast
+  const addToast = (message, type = 'success') => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type, duration: 3000 }]);
+  };
+
+  // Remover toast
+  const removeToast = (id) => {
+    setToasts(prev => prev.filter(toast => toast.id !== id));
+  };
+
+  // Chef confirma pedido
+  const handleChefConfirma = async (pedido) => {
+    setProcesando(prev => ({ ...prev, [pedido.pedido_id]: true }));
+    try {
+      const userData = getUserData();
+      await chefConfirmaAPI(pedido.pedido_id, userData.id, true, pedido.tenant_id);
+      addToast('✅ Pedido confirmado para preparación', 'success');
+      await actualizarPedidoEnLista(pedido.pedido_id, pedido.tenant_id);
+    } catch (error) {
+      console.error('Error confirmando pedido:', error);
+      addToast('Error al confirmar pedido: ' + (error.message || 'Error desconocido'), 'error');
+    } finally {
+      setProcesando(prev => ({ ...prev, [pedido.pedido_id]: false }));
+    }
+  };
+
+  // Chef rechaza pedido
+  const handleChefRechaza = async (pedido) => {
+    setProcesando(prev => ({ ...prev, [pedido.pedido_id]: true }));
+    try {
+      const userData = getUserData();
+      await chefConfirmaAPI(pedido.pedido_id, userData.id, false, pedido.tenant_id);
+      addToast('❌ Pedido rechazado', 'error');
+      await actualizarPedidoEnLista(pedido.pedido_id, pedido.tenant_id);
+    } catch (error) {
+      console.error('Error rechazando pedido:', error);
+      addToast('Error al rechazar pedido: ' + (error.message || 'Error desconocido'), 'error');
+    } finally {
+      setProcesando(prev => ({ ...prev, [pedido.pedido_id]: false }));
+    }
+  };
+
+  // Despachado confirma
+  const handleDespachadoConfirma = async (pedido) => {
+    setProcesando(prev => ({ ...prev, [pedido.pedido_id]: true }));
+    try {
+      await despachadoConfirmaAPI(pedido.pedido_id, pedido.tenant_id);
+      addToast('✅ Pedido despachado confirmado', 'success');
+      await actualizarPedidoEnLista(pedido.pedido_id, pedido.tenant_id);
+    } catch (error) {
+      console.error('Error confirmando despachado:', error);
+      addToast('Error al confirmar despachado: ' + (error.message || 'Error desconocido'), 'error');
+    } finally {
+      setProcesando(prev => ({ ...prev, [pedido.pedido_id]: false }));
+    }
+  };
+
+  // Motorizado confirma recogida
+  const handleMotorizadoConfirma = async (pedido) => {
+    setProcesando(prev => ({ ...prev, [pedido.pedido_id]: true }));
+    try {
+      const userData = getUserData();
+      await motorizadoConfirmaAPI(pedido.pedido_id, userData.id, pedido.tenant_id);
+      addToast('✅ Recogida confirmada, pedido en camino', 'success');
+      await actualizarPedidoEnLista(pedido.pedido_id, pedido.tenant_id);
+    } catch (error) {
+      console.error('Error confirmando recogida:', error);
+      addToast('Error al confirmar recogida: ' + (error.message || 'Error desconocido'), 'error');
+    } finally {
+      setProcesando(prev => ({ ...prev, [pedido.pedido_id]: false }));
+    }
+  };
+
+  // Ver historial de estados
+  const handleVerHistorial = async (pedido) => {
+    try {
+      const data = await getOrderStatusAPI(pedido.pedido_id, true, pedido.tenant_id);
+      if (data.historial && data.historial.length > 0) {
+        setHistorialDialog({
+          open: true,
+          pedido: pedido,
+          historial: data.historial
+        });
+      } else {
+        addToast('No hay historial disponible', 'error');
+      }
+    } catch (error) {
+      console.error('Error obteniendo historial:', error);
+      addToast('Error al obtener historial', 'error');
+    }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadMyOrders();
+    setRefreshing(false);
   };
 
   return (
     <div className="flex-1 bg-white p-8">
-      <div className="mb-8">
+      <div className="mb-8 flex justify-between items-center">
         <h1 className="font-spartan font-black text-4xl mb-2">
-          <span className="text-pardos-rust">DASHBOARD</span> DE{' '}
-          <span className="text-black">PEDIDOS ASIGNADOS</span>
+          <span className="text-pardos-rust">MIS</span> PEDIDOS{' '}
+          <span className="text-black">ASIGNADOS</span>
         </h1>
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="px-4 py-2 bg-pardos-rust hover:bg-pardos-brown text-white rounded-lg font-spartan font-bold transition-colors disabled:opacity-50"
+        >
+          {refreshing ? '🔄 Actualizando...' : '🔄 Actualizar'}
+        </button>
       </div>
 
-      {misPedidos.length === 0 ? (
+      {loading ? (
+        <div className="text-center py-20">
+          <p className="text-gray-500 font-lato text-xl">Cargando pedidos...</p>
+        </div>
+      ) : pedidos.length === 0 ? (
         <div className="text-center py-20">
           <p className="text-gray-500 font-lato text-xl">
             No tienes pedidos asignados en este momento
@@ -98,8 +280,19 @@ const MisPedidos = ({ user }) => {
         </div>
       ) : (
         <div className="space-y-6">
-          {misPedidos.map((pedido) => {
+          {pedidos.map((pedido) => {
             const statusInfo = getStatusInfo(pedido.status);
+            const esChef = pedido.mi_rol?.es_chef || false;
+            const esMotorizado = pedido.mi_rol?.es_motorizado || false;
+            
+            // Debug: Log para ver qué está pasando
+            console.log('Pedido:', {
+              id: pedido.id,
+              estado: pedido.estado_backend,
+              esChef,
+              esMotorizado,
+              mi_rol: pedido.mi_rol
+            });
             
             return (
               <div key={pedido.id} className="border-4 border-gray-300 rounded-2xl p-6 bg-white shadow-lg">
@@ -107,19 +300,19 @@ const MisPedidos = ({ user }) => {
                 <div className="grid grid-cols-3 gap-4 mb-6">
                   <div className="bg-pardos-yellow p-4 rounded-lg text-center">
                     <div className="font-spartan font-bold text-black text-lg">ID PEDIDO</div>
-                    <div className="font-spartan font-black text-2xl text-pardos-dark mt-2">
-                      {pedido.id}
+                    <div className="font-spartan font-black text-xl text-pardos-dark mt-2">
+                      {pedido.id.substring(0, 8)}...
                     </div>
                   </div>
                   <div className="bg-green-600 p-4 rounded-lg text-center text-white">
                     <div className="font-spartan font-bold text-lg">SEDE</div>
-                    <div className="font-spartan font-black text-2xl mt-2">
+                    <div className="font-spartan font-black text-xl mt-2">
                       {pedido.sede}
                     </div>
                   </div>
                   <div className="bg-pardos-brown p-4 rounded-lg text-center text-white">
                     <div className="font-spartan font-bold text-lg">HORA INICIAL</div>
-                    <div className="font-spartan font-black text-2xl mt-2">
+                    <div className="font-spartan font-black text-xl mt-2">
                       {pedido.horaGeneracion}
                     </div>
                   </div>
@@ -132,11 +325,19 @@ const MisPedidos = ({ user }) => {
                     <div className="bg-white border-2 border-gray-300 rounded-lg p-4">
                       <h3 className="font-spartan font-bold text-lg mb-4">LISTA DE PRODUCTOS</h3>
                       <ul className="space-y-2">
-                        {pedido.productos.map((producto, i) => (
-                          <li key={i} className="font-lato text-gray-700">
-                            • {producto.nombre} (x{producto.cantidad})
-                          </li>
-                        ))}
+                        {pedido.productos && pedido.productos.length > 0 ? (
+                          pedido.productos.map((producto, i) => {
+                            const nombreProducto = producto.nombre || producto.nombre_producto || `Producto ${i + 1}`;
+                            const cantidad = producto.cantidad || producto.quantity || 1;
+                            return (
+                              <li key={producto.product_id || producto.producto_id || i} className="font-lato text-gray-700">
+                                • {nombreProducto} (x{cantidad})
+                              </li>
+                            );
+                          })
+                        ) : (
+                          <li className="font-lato text-gray-500 italic">No hay productos en este pedido</li>
+                        )}
                       </ul>
                     </div>
                   </div>
@@ -160,64 +361,207 @@ const MisPedidos = ({ user }) => {
                       </div>
                     </div>
 
-                    {/* Botones de Control */}
+                    {/* Botones de Acción según Rol y Estado */}
                     <div className="space-y-2">
-                      <p className="text-center font-spartan font-bold text-sm text-gray-600 mb-2">
-                        CAMBIAR ESTADO:
-                      </p>
-                      {Object.values(ESTADOS).map((estado) => {
-                        const isCurrentState = pedido.status === estado;
-                        const canAdvance = puedeAvanzarA(pedido.status, estado);
-                        const isCompleted = Object.values(ESTADOS).indexOf(pedido.status) > Object.values(ESTADOS).indexOf(estado);
-                        
-                        return (
+                      {/* Debug info - remover en producción */}
+                      {process.env.NODE_ENV === 'development' && (
+                        <div className="text-xs bg-gray-100 p-2 rounded mb-2">
+                          <p>Estado: {pedido.estado_backend}</p>
+                          <p>Es Chef: {esChef ? 'Sí' : 'No'}</p>
+                          <p>Es Motorizado: {esMotorizado ? 'Sí' : 'No'}</p>
+                          <p>Mi Rol: {JSON.stringify(pedido.mi_rol)}</p>
+                        </div>
+                      )}
+
+                      {esChef && pedido.estado_backend === 'pendiente' && (
+                        <>
                           <button
-                            key={estado}
-                            onClick={() => handleCambiarEstado(pedido.id, estado)}
-                            disabled={!canAdvance || isCurrentState}
-                            className={`w-full py-3 px-4 rounded-lg font-spartan font-bold text-sm transition-all ${
-                              isCurrentState
-                                ? 'bg-gray-400 text-white cursor-not-allowed'
-                                : isCompleted
-                                ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
-                                : canAdvance
-                                ? 'bg-pardos-rust hover:bg-pardos-brown text-white hover:scale-105 shadow-lg'
-                                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                            }`}
+                            onClick={() => handleChefConfirma(pedido)}
+                            disabled={procesando[pedido.pedido_id]}
+                            className="w-full py-3 px-4 rounded-lg font-spartan font-bold text-sm bg-green-500 hover:bg-green-600 text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                           >
-                            {isCurrentState && '✓ '}
-                            {estado.toUpperCase()}
-                            {isCompleted && ' ✓'}
+                            {procesando[pedido.pedido_id] ? (
+                              <>
+                                <Loading size="sm" />
+                                <span>Procesando...</span>
+                              </>
+                            ) : (
+                              '✅ CONFIRMAR PREPARACIÓN'
+                            )}
                           </button>
-                        );
-                      })}
+                          <button
+                            onClick={() => handleChefRechaza(pedido)}
+                            disabled={procesando[pedido.pedido_id]}
+                            className="w-full py-3 px-4 rounded-lg font-spartan font-bold text-sm bg-red-500 hover:bg-red-600 text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                          >
+                            {procesando[pedido.pedido_id] ? (
+                              <>
+                                <Loading size="sm" />
+                                <span>Procesando...</span>
+                              </>
+                            ) : (
+                              '❌ RECHAZAR PEDIDO'
+                            )}
+                          </button>
+                        </>
+                      )}
+                      
+                      {esChef && pedido.estado_backend === 'preparando' && (
+                        <p className="text-center text-sm text-gray-600">
+                          Preparando pedido...
+                        </p>
+                      )}
+                      
+                      {/* Despachado confirma - cuando el pedido está en "despachando" */}
+                      {/* Cualquier staff (chef o admin) que NO sea motorizado puede confirmar despacho */}
+                      {!esMotorizado && pedido.estado_backend === 'despachando' && (
+                        <button
+                          onClick={() => handleDespachadoConfirma(pedido)}
+                          disabled={procesando[pedido.pedido_id]}
+                          className="w-full py-3 px-4 rounded-lg font-spartan font-bold text-sm bg-orange-500 hover:bg-orange-600 text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                          {procesando[pedido.pedido_id] ? (
+                            <>
+                              <Loading size="sm" />
+                              <span>Procesando...</span>
+                            </>
+                          ) : (
+                            '📦 CONFIRMAR DESPACHO'
+                          )}
+                        </button>
+                      )}
+                      
+                      {/* Mensaje cuando el pedido ya está despachado */}
+                      {!esMotorizado && pedido.estado_backend === 'despachado' && (
+                        <p className="text-center text-sm text-green-600 font-bold">
+                          ✅ Pedido despachado, esperando recogida
+                        </p>
+                      )}
+                      
+                      {/* Motorizado confirma recogida - solo en estados válidos */}
+                      {esMotorizado && (
+                        <>
+                          {/* Estados válidos: despachado o recogiendo */}
+                          {(pedido.estado_backend === 'despachado' || 
+                            pedido.estado_backend === 'recogiendo') && (
+                            <button
+                              onClick={() => handleMotorizadoConfirma(pedido)}
+                              disabled={procesando[pedido.pedido_id]}
+                              className="w-full py-3 px-4 rounded-lg font-spartan font-bold text-sm bg-purple-500 hover:bg-purple-600 text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            >
+                              {procesando[pedido.pedido_id] ? (
+                                <>
+                                  <Loading size="sm" />
+                                  <span>Procesando...</span>
+                                </>
+                              ) : (
+                                '🏍️ CONFIRMAR RECOGIDA'
+                              )}
+                            </button>
+                          )}
+                          
+                          {/* Si está en despachando, mostrar mensaje de espera */}
+                          {pedido.estado_backend === 'despachando' && (
+                            <p className="text-center text-sm text-orange-600 font-bold">
+                              ⏳ Esperando confirmación de despacho...
+                            </p>
+                          )}
+                          
+                          {/* Si el pedido ya está en camino, mostrar mensaje */}
+                          {pedido.estado_backend === 'en_camino' && (
+                            <p className="text-center text-sm text-gray-600">
+                              Pedido en camino al cliente...
+                            </p>
+                          )}
+                        </>
+                      )}
+                      
+                      {/* Si no es motorizado, mostrar mensaje cuando está en camino */}
+                      {!esMotorizado && pedido.estado_backend === 'en_camino' && (
+                        <p className="text-center text-sm text-gray-600">
+                          Pedido en camino al cliente...
+                        </p>
+                      )}
+                      
+                      {pedido.estado_backend === 'entregado' && (
+                        <p className="text-center text-sm text-green-600 font-bold">
+                          ✅ PEDIDO ENTREGADO
+                        </p>
+                      )}
+                      
+                      {/* Botón para ver historial */}
+                      <button
+                        onClick={() => handleVerHistorial(pedido)}
+                        className="w-full py-2 px-4 rounded-lg font-spartan font-bold text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 transition-all"
+                      >
+                        📋 Ver Historial de Estados
+                      </button>
                     </div>
                   </div>
                 </div>
-
-                {/* Historial de Estados */}
-                <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-                  <h4 className="font-spartan font-bold text-lg mb-3">
-                    TIEMPOS DE PRODUCCIÓN:
-                  </h4>
-                  <div className="space-y-2">
-                    {pedido.historialEstados.map((historial, index) => (
-                      <div
-                        key={index}
-                        className="flex justify-between items-center text-lg font-lato"
-                      >
-                        <span className="text-gray-700">{historial.estado}</span>
-                        <span className="text-gray-500">
-                          {index > 0 && `Duración: ${formatearTiempo(historial.duracion)}`}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Toast Container */}
+      <ToastContainer toasts={toasts} removeToast={removeToast} />
+
+      {/* Dialog de Historial */}
+      {historialDialog.open && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setHistorialDialog({ open: false, pedido: null, historial: [] })}>
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="font-spartan font-black text-2xl text-pardos-dark">
+                📋 Historial de Estados
+              </h2>
+              <button
+                onClick={() => setHistorialDialog({ open: false, pedido: null, historial: [] })}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+            {historialDialog.pedido && (
+              <div className="mb-4 p-3 bg-gray-100 rounded-lg">
+                <p className="font-lato font-bold">
+                  <span className="text-pardos-rust">Pedido:</span> {historialDialog.pedido.pedido_id.substring(0, 12)}...
+                </p>
+              </div>
+            )}
+            <div className="space-y-3">
+              {historialDialog.historial.map((h, i) => (
+                <div key={i} className="border-l-4 border-pardos-rust pl-4 py-2">
+                  <div className="font-spartan font-bold text-lg">
+                    {i + 1}. {h.estado_anterior || 'Inicial'} → {h.estado_nuevo}
+                  </div>
+                  <div className="font-lato text-sm text-gray-600 mt-1">
+                    {new Date(h.timestamp).toLocaleString('es-PE', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </div>
+                  {h.motivo && (
+                    <div className="font-lato text-sm text-gray-500 mt-1 italic">
+                      Motivo: {h.motivo}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={() => setHistorialDialog({ open: false, pedido: null, historial: [] })}
+                className="px-4 py-2 bg-pardos-rust hover:bg-pardos-brown text-white rounded-lg font-spartan font-bold transition-colors"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

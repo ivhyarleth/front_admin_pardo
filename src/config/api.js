@@ -1,8 +1,8 @@
 // 🔌 Configuración de Endpoints API - Pardos Admin System
 // ============================================
 
-// Base URL del API Gateway (configurar en .env)
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://tu-api-gateway.execute-api.us-east-1.amazonaws.com/prod';
+// Base URL del API Gateway
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://tl5son9q35.execute-api.us-east-1.amazonaws.com/dev';
 
 // ============================================
 // 📍 ENDPOINTS
@@ -14,45 +14,92 @@ export const API_ENDPOINTS = {
   AUTH: {
     LOGIN: `${API_BASE_URL}/auth/login`,           // POST - Login (admin/trabajador)
     LOGOUT: `${API_BASE_URL}/auth/logout`,         // POST - Cerrar sesión
+    REGISTRO: `${API_BASE_URL}/auth/registro`,     // POST - Registro staff
+    GENERAR_INVITATION: `${API_BASE_URL}/auth/generate-invitation`, // POST - Generar código
   },
 
-  // 📦 PEDIDOS (Admin)
-  ORDERS: {
-    GET_ALL: `${API_BASE_URL}/orders`,                              // GET - Todos los pedidos
-    GET_BY_ID: (orderId) => `${API_BASE_URL}/orders/${orderId}`,   // GET - Un pedido
-    ASSIGN_WORKER: (orderId) => `${API_BASE_URL}/orders/${orderId}/assign`, // PUT - Asignar trabajador
-    UPDATE_STATUS: (orderId) => `${API_BASE_URL}/orders/${orderId}/status`, // PUT - Actualizar estado
+  // 📦 PEDIDOS
+  PEDIDOS: {
+    CONSULTAR: `${API_BASE_URL}/pedido/consultar`, // GET - Todos los pedidos (admin ve todas las sedes)
+    MIS_ASIGNACIONES: `${API_BASE_URL}/pedido/mis-asignaciones`, // GET - Pedidos asignados (trabajador)
   },
 
-  // 📋 PEDIDOS ASIGNADOS (Trabajador)
-  ASSIGNED_ORDERS: {
-    GET_MY_ORDERS: (trabajadorId) => `${API_BASE_URL}/orders/assigned/${trabajadorId}`, // GET - Mis pedidos
+  // 📊 ESTADOS
+  ESTADOS: {
+    OBTENER: `${API_BASE_URL}/estados/obtener`,    // GET - Obtener estado y historial
+    ACTUALIZAR: `${API_BASE_URL}/estados/actualizar`, // POST - Actualizar estado manualmente
+    METRICAS_TIEMPOS: `${API_BASE_URL}/estados/metricas-tiempos`, // GET - Obtener métricas de tiempos de transición
   },
 
-  // 📊 KPIs (Admin)
+  // 👥 ASIGNACIONES
+  ASIGNACIONES: {
+    ASIGNAR: `${API_BASE_URL}/asignaciones/asignar`, // POST - Asignar trabajador
+    OBTENER_TRABAJADORES: `${API_BASE_URL}/asignaciones/obtener`, // GET - Listar trabajadores
+  },
+
+  // 🔄 WORKFLOW
+  WORKFLOW: {
+    CHEF_CONFIRMA: `${API_BASE_URL}/chef/confirma`, // POST - Chef confirma
+    DESPACHADO_CONFIRMA: `${API_BASE_URL}/despachado/confirma`, // POST - Despachado confirma
+    MOTORIZADO_CONFIRMA: `${API_BASE_URL}/motorizado/confirma`, // POST - Motorizado confirma
+  },
+
+  // 📊 KPIs
   KPIS: {
-    GET_BY_SEDE: (sedeId, fecha) => `${API_BASE_URL}/kpis/sede/${sedeId}?fecha=${fecha}`, // GET - KPIs por sede
-  },
-
-  // 👥 TRABAJADORES
-  WORKERS: {
-    GET_ALL: `${API_BASE_URL}/workers`,           // GET - Todos los trabajadores
-    GET_AVAILABLE: `${API_BASE_URL}/workers/available`, // GET - Disponibles
+    CALCULAR: `${API_BASE_URL}/kpis/calcular`, // POST - Calcular KPIs
+    CONSULTAR: `${API_BASE_URL}/kpis/consultar`, // GET - Consultar KPIs
   },
 };
 
 // ============================================
-// 🔧 HEADERS
+// 🔧 HEADERS Y UTILIDADES
 // ============================================
 
-export const getAuthHeaders = () => {
-  const token = localStorage.getItem('pardos-system-token');
-  return {
+// Obtener token de autenticación
+export const getAuthToken = () => {
+  return localStorage.getItem('pardos-system-token');
+};
+
+// Obtener datos del usuario
+export const getUserData = () => {
+  const userStr = localStorage.getItem('pardos-system-user');
+  return userStr ? JSON.parse(userStr) : null;
+};
+
+// Obtener sede seleccionada
+export const getSelectedSede = () => {
+  return localStorage.getItem('pardos-selected-sede') || 'pardo_miraflores';
+};
+
+// Guardar sede seleccionada
+export const setSelectedSede = (sede) => {
+  localStorage.setItem('pardos-selected-sede', sede);
+};
+
+// Headers con autenticación
+export const getAuthHeaders = (tenantId = null) => {
+  const token = getAuthToken();
+  const headers = {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${token}`,
   };
+  
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  
+  if (tenantId) {
+    headers['x-tenant-id'] = tenantId;
+  } else {
+    // Si no se especifica, usar la sede del usuario o la seleccionada
+    const user = getUserData();
+    const sede = user?.tenant_id_sede || getSelectedSede();
+    headers['x-tenant-id'] = sede;
+  }
+  
+  return headers;
 };
 
+// Headers sin autenticación
 export const getHeaders = () => {
   return {
     'Content-Type': 'application/json',
@@ -64,23 +111,43 @@ export const getHeaders = () => {
 // ============================================
 
 // Login
-export const loginAPI = async (email, password, rol) => {
+export const loginAPI = async (email, password, frontendType = 'staff', tenantIdSede = null) => {
   try {
+    const body = {
+      email,
+      password,
+      frontend_type: frontendType,
+    };
+    
+    // Si es staff, agregar tenant_id_sede (puede ser null para admin general)
+    if (frontendType === 'staff') {
+      // Permitir null explícitamente para admin general
+      body.tenant_id_sede = tenantIdSede !== undefined ? tenantIdSede : null;
+    }
+    
     const response = await fetch(API_ENDPOINTS.AUTH.LOGIN, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ email, password, rol })
+      body: JSON.stringify(body)
     });
-    
-    if (!response.ok) {
-      throw new Error('Error en login');
-    }
     
     const data = await response.json();
     
-    // Guardar token
+    if (!response.ok) {
+      throw new Error(data.message || 'Error en login');
+    }
+    
+    // Guardar token y datos de usuario
     if (data.token) {
       localStorage.setItem('pardos-system-token', data.token);
+    }
+    
+    if (data.user) {
+      localStorage.setItem('pardos-system-user', JSON.stringify(data.user));
+      // Guardar sede del usuario
+      if (data.user.tenant_id_sede) {
+        setSelectedSede(data.user.tenant_id_sede);
+      }
     }
     
     return data;
@@ -90,40 +157,131 @@ export const loginAPI = async (email, password, rol) => {
   }
 };
 
-// Obtener todos los pedidos (Admin)
-export const getAllOrdersAPI = async () => {
+// Logout
+export const logoutAPI = async () => {
   try {
-    const response = await fetch(API_ENDPOINTS.ORDERS.GET_ALL, {
-      method: 'GET',
-      headers: getAuthHeaders()
+    const response = await fetch(API_ENDPOINTS.AUTH.LOGOUT, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      mode: 'cors' // Asegurar que use CORS
     });
     
+    // Limpiar localStorage siempre, incluso si la respuesta falla
+    localStorage.removeItem('pardos-system-token');
+    localStorage.removeItem('pardos-system-user');
+    localStorage.removeItem('pardos-selected-sede');
+    
+    // Si la respuesta no es OK, no lanzar error (ya limpiamos localStorage)
     if (!response.ok) {
-      throw new Error('Error obteniendo pedidos');
+      console.warn('Logout API response not OK, but localStorage cleared');
+      return { message: 'Sesión cerrada localmente' };
     }
     
+    return await response.json();
+  } catch (error) {
+    console.error('Error en logoutAPI:', error);
+    // Limpiar localStorage incluso si hay error (importante para UX)
+    localStorage.removeItem('pardos-system-token');
+    localStorage.removeItem('pardos-system-user');
+    localStorage.removeItem('pardos-selected-sede');
+    // Retornar éxito aunque haya error de red (el logout local ya se hizo)
+    return { message: 'Sesión cerrada localmente' };
+  }
+};
+
+// Obtener todos los pedidos (Admin ve todas las sedes)
+export const getAllOrdersAPI = async (tenantId = null) => {
+  try {
+    const response = await fetch(API_ENDPOINTS.PEDIDOS.CONSULTAR, {
+      method: 'GET',
+      headers: getAuthHeaders(tenantId)
+    });
+    
     const data = await response.json();
-    return data.orders || [];
+    
+    if (!response.ok) {
+      throw new Error(data.message || 'Error obteniendo pedidos');
+    }
+    
+    return data.pedidos || [];
   } catch (error) {
     console.error('Error en getAllOrdersAPI:', error);
     throw error;
   }
 };
 
-// Asignar trabajador a pedido (Admin)
-export const assignWorkerAPI = async (orderId, trabajadorId) => {
+// Obtener pedido por ID
+export const getOrderByIdAPI = async (pedidoId, tenantId = null) => {
   try {
-    const response = await fetch(API_ENDPOINTS.ORDERS.ASSIGN_WORKER(orderId), {
-      method: 'PUT',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({ trabajadorId })
+    const response = await fetch(`${API_ENDPOINTS.PEDIDOS.CONSULTAR}?pedido_id=${pedidoId}`, {
+      method: 'GET',
+      headers: getAuthHeaders(tenantId)
     });
     
+    const data = await response.json();
+    
     if (!response.ok) {
-      throw new Error('Error asignando trabajador');
+      throw new Error(data.message || 'Error obteniendo pedido');
     }
     
+    return data.pedido;
+  } catch (error) {
+    console.error('Error en getOrderByIdAPI:', error);
+    throw error;
+  }
+};
+
+// Obtener mis asignaciones (Trabajador)
+export const getMyAssignmentsAPI = async (tipo = null, tenantId = null) => {
+  try {
+    let endpoint = API_ENDPOINTS.PEDIDOS.MIS_ASIGNACIONES;
+    if (tipo) {
+      endpoint += `?tipo=${tipo}`;
+    }
+    
+    const response = await fetch(endpoint, {
+      method: 'GET',
+      headers: getAuthHeaders(tenantId)
+    });
+    
     const data = await response.json();
+    
+    // Debug: Ver respuesta del backend
+    console.log('🔍 Respuesta de mis-asignaciones:', data);
+    
+    if (!response.ok) {
+      throw new Error(data.message || 'Error obteniendo asignaciones');
+    }
+    
+    return data.pedidos || [];
+  } catch (error) {
+    console.error('Error en getMyAssignmentsAPI:', error);
+    throw error;
+  }
+};
+
+// Asignar trabajador a pedido (Admin)
+export const assignWorkerAPI = async (pedidoId, trabajadorEmail, tipoAsignacion, tenantId = null) => {
+  try {
+    const body = {
+      tenant_id: tenantId || getSelectedSede(),
+      pedido_id: pedidoId,
+      trabajador_email: trabajadorEmail,
+      tipo_asignacion: tipoAsignacion // 'chef' o 'motorizado'
+    };
+    
+    const response = await fetch(API_ENDPOINTS.ASIGNACIONES.ASIGNAR, {
+      method: 'POST',
+      headers: getAuthHeaders(tenantId),
+      body: JSON.stringify(body)
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || 'Error asignando trabajador');
+    }
+    
     return data;
   } catch (error) {
     console.error('Error en assignWorkerAPI:', error);
@@ -131,24 +289,99 @@ export const assignWorkerAPI = async (orderId, trabajadorId) => {
   }
 };
 
-// Cambiar estado de pedido (Trabajador)
-export const updateOrderStatusAPI = async (orderId, status, timestamp, duracion) => {
+// Obtener trabajadores disponibles
+export const getWorkersAPI = async (tenantIdSede = null, email = null, staffTier = null) => {
   try {
-    const response = await fetch(API_ENDPOINTS.ORDERS.UPDATE_STATUS(orderId), {
-      method: 'PUT',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({ 
-        status, 
-        timestamp,
-        duracion 
-      })
-    });
+    let endpoint = API_ENDPOINTS.ASIGNACIONES.OBTENER_TRABAJADORES;
+    const params = new URLSearchParams();
     
-    if (!response.ok) {
-      throw new Error('Error actualizando estado');
+    if (tenantIdSede) {
+      params.append('tenant_id_sede', tenantIdSede);
+    } else {
+      params.append('tenant_id_sede', getSelectedSede());
     }
     
+    if (email) {
+      params.append('email', email);
+    }
+    
+    if (staffTier) {
+      params.append('staff_tier', staffTier);
+    }
+    
+    if (params.toString()) {
+      endpoint += `?${params.toString()}`;
+    }
+    
+    const response = await fetch(endpoint, {
+      method: 'GET',
+      headers: getAuthHeaders()
+    });
+    
     const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || 'Error obteniendo trabajadores');
+    }
+    
+    return data.trabajadores || [];
+  } catch (error) {
+    console.error('Error en getWorkersAPI:', error);
+    throw error;
+  }
+};
+
+// Obtener estado de pedido con historial
+export const getOrderStatusAPI = async (pedidoId, incluirHistorial = true, tenantId = null) => {
+  try {
+    let endpoint = `${API_ENDPOINTS.ESTADOS.OBTENER}?pedido_id=${pedidoId}`;
+    if (incluirHistorial) {
+      endpoint += '&incluir_historial=true';
+    }
+    
+    const response = await fetch(endpoint, {
+      method: 'GET',
+      headers: getAuthHeaders(tenantId)
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || 'Error obteniendo estado');
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Error en getOrderStatusAPI:', error);
+    throw error;
+  }
+};
+
+// Actualizar estado de pedido (Manual)
+export const updateOrderStatusAPI = async (pedidoId, nuevoEstado, motivo = null, tenantId = null) => {
+  try {
+    const body = {
+      tenant_id: tenantId || getSelectedSede(),
+      pedido_id: pedidoId,
+      estado: nuevoEstado
+    };
+    
+    if (motivo) {
+      body.motivo = motivo;
+    }
+    
+    const response = await fetch(API_ENDPOINTS.ESTADOS.ACTUALIZAR, {
+      method: 'POST',
+      headers: getAuthHeaders(tenantId),
+      body: JSON.stringify(body)
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || 'Error actualizando estado');
+    }
+    
     return data;
   } catch (error) {
     console.error('Error en updateOrderStatusAPI:', error);
@@ -156,62 +389,194 @@ export const updateOrderStatusAPI = async (orderId, status, timestamp, duracion)
   }
 };
 
-// Obtener pedidos asignados (Trabajador)
-export const getAssignedOrdersAPI = async (trabajadorId) => {
+// Chef confirma pedido
+export const chefConfirmaAPI = async (pedidoId, chefId, aprobado = true, tenantId = null) => {
   try {
-    const response = await fetch(API_ENDPOINTS.ASSIGNED_ORDERS.GET_MY_ORDERS(trabajadorId), {
-      method: 'GET',
-      headers: getAuthHeaders()
+    const body = {
+      tenant_id: tenantId || getSelectedSede(),
+      pedido_id: pedidoId,
+      chef_id: chefId,
+      aprobado: aprobado
+    };
+    
+    const response = await fetch(API_ENDPOINTS.WORKFLOW.CHEF_CONFIRMA, {
+      method: 'POST',
+      headers: getAuthHeaders(tenantId),
+      body: JSON.stringify(body)
     });
     
+    const data = await response.json();
+    
     if (!response.ok) {
-      throw new Error('Error obteniendo pedidos asignados');
+      throw new Error(data.message || 'Error confirmando chef');
     }
     
-    const data = await response.json();
-    return data.orders || [];
+    return data;
   } catch (error) {
-    console.error('Error en getAssignedOrdersAPI:', error);
+    console.error('Error en chefConfirmaAPI:', error);
+    throw error;
+  }
+};
+
+// Despachado confirma pedido
+export const despachadoConfirmaAPI = async (pedidoId, tenantId = null) => {
+  try {
+    const body = {
+      tenant_id: tenantId || getSelectedSede(),
+      pedido_id: pedidoId
+    };
+    
+    const response = await fetch(API_ENDPOINTS.WORKFLOW.DESPACHADO_CONFIRMA, {
+      method: 'POST',
+      headers: getAuthHeaders(tenantId),
+      body: JSON.stringify(body)
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || 'Error confirmando despachado');
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Error en despachadoConfirmaAPI:', error);
+    throw error;
+  }
+};
+
+// Motorizado confirma pedido
+export const motorizadoConfirmaAPI = async (pedidoId, motorizadoId, tenantId = null) => {
+  try {
+    const body = {
+      tenant_id: tenantId || getSelectedSede(),
+      pedido_id: pedidoId,
+      motorizado_id: motorizadoId
+    };
+    
+    const response = await fetch(API_ENDPOINTS.WORKFLOW.MOTORIZADO_CONFIRMA, {
+      method: 'POST',
+      headers: getAuthHeaders(tenantId),
+      body: JSON.stringify(body)
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || 'Error confirmando motorizado');
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Error en motorizadoConfirmaAPI:', error);
+    throw error;
+  }
+};
+
+// Generar código de invitación (Admin)
+export const generarInvitationCodeAPI = async (tenantIdSede, staffTier = 'trabajador') => {
+  try {
+    const body = {
+      tenant_id_sede: tenantIdSede,
+      staff_tier: staffTier
+    };
+    
+    const response = await fetch(API_ENDPOINTS.AUTH.GENERAR_INVITATION, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(body)
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || 'Error generando código');
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Error en generarInvitationCodeAPI:', error);
     throw error;
   }
 };
 
 // Obtener KPIs por sede (Admin)
-export const getKPIsBySedeAPI = async (sedeId, fecha) => {
+// Si fecha es null, retorna datos globales agregados
+export const getKPIsBySedeAPI = async (sedeId, fecha = null) => {
   try {
-    const response = await fetch(API_ENDPOINTS.KPIS.GET_BY_SEDE(sedeId, fecha), {
-      method: 'GET',
-      headers: getAuthHeaders()
+    const params = new URLSearchParams({
+      tenant_id: sedeId
     });
-    
-    if (!response.ok) {
-      throw new Error('Error obteniendo KPIs');
+    // Solo agregar fecha si se proporciona explícitamente
+    if (fecha) {
+      params.append('fecha', fecha);
     }
     
+    const response = await fetch(`${API_ENDPOINTS.KPIS.CONSULTAR}?${params.toString()}`, {
+      method: 'GET',
+      headers: getAuthHeaders(sedeId)
+    });
+    
     const data = await response.json();
-    return data;
+    
+    if (!response.ok) {
+      throw new Error(data.message || 'Error obteniendo KPIs');
+    }
+    
+    return {
+      tenant_id: data.tenant_id || sedeId,
+      fecha: data.fecha || fecha,
+      numero_pedidos: data.numero_pedidos || 0,
+      ingresos_dia: data.ingresos_dia || 0,
+      ticket_promedio: data.ticket_promedio || 0,
+      top_productos: data.top_productos || [],
+      // Nuevas métricas
+      estados_pedidos: data.estados_pedidos || {
+        completados: 0,
+        cancelados: 0,
+        pendientes: 0,
+        preparando: 0,
+        despachando: 0,
+        en_camino: 0,
+        entregado: 0,
+        rechazado: 0
+      },
+      tasa_exito: data.tasa_exito || 0,
+      ingresos_por_hora: data.ingresos_por_hora || [],
+      metodos_pago: data.metodos_pago || []
+    };
   } catch (error) {
     console.error('Error en getKPIsBySedeAPI:', error);
     throw error;
   }
 };
 
-// Obtener lista de trabajadores (Admin)
-export const getWorkersAPI = async () => {
+// Obtener métricas de tiempos de transición
+// Si fecha es null, retorna métricas globales agregadas
+export const getMetricasTiemposAPI = async (sedeId, fecha = null) => {
   try {
-    const response = await fetch(API_ENDPOINTS.WORKERS.GET_ALL, {
-      method: 'GET',
-      headers: getAuthHeaders()
+    const params = new URLSearchParams({
+      tenant_id: sedeId
     });
-    
-    if (!response.ok) {
-      throw new Error('Error obteniendo trabajadores');
+    // Solo agregar fecha si se proporciona explícitamente
+    if (fecha) {
+      params.append('fecha', fecha);
     }
     
+    const response = await fetch(`${API_ENDPOINTS.ESTADOS.METRICAS_TIEMPOS}?${params.toString()}`, {
+      method: 'GET',
+      headers: getAuthHeaders(sedeId)
+    });
+    
     const data = await response.json();
-    return data.workers || [];
+    
+    if (!response.ok) {
+      throw new Error(data.message || 'Error obteniendo métricas de tiempos');
+    }
+    
+    return data;
   } catch (error) {
-    console.error('Error en getWorkersAPI:', error);
+    console.error('Error en getMetricasTiemposAPI:', error);
     throw error;
   }
 };

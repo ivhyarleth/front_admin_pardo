@@ -10,8 +10,9 @@ const SidebarAdmin = ({ user, onLogout }) => {
   };
 
   const menuItems = [
-    { name: 'Dashboard', path: '/dashboard'},
-    { name: 'KPIs', path: '/rendimiento' }
+    { name: 'Dashboard', path: '/dashboard', icon: '📊' },
+    { name: 'Asignaciones', path: '/asignaciones', icon: '👥' },
+    { name: 'KPIs', path: '/rendimiento', icon: '📈' }
   ];
 
   return (

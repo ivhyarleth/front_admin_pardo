@@ -9,5 +9,20 @@ export default defineConfig({
     watch: {
       usePolling: true
     }
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Separar React y React DOM
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          // Separar Recharts (es una librería grande)
+          'recharts-vendor': ['recharts'],
+          // Separar utilidades
+          'utils-vendor': ['clsx', 'tailwind-merge']
+        }
+      }
+    },
+    chunkSizeWarningLimit: 600
   }
 })
