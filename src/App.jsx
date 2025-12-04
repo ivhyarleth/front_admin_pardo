@@ -1,9 +1,12 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { PedidosProvider } from './context/PedidosContext';
+import { ToastProvider } from './components/ui/Toast';
 import { logoutAPI } from './config/api';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import Productos from './pages/Productos';
+import Inventario from './pages/Inventario';
 import Asignaciones from './pages/Asignaciones';
 import MisPedidos from './pages/MisPedidos';
 import SidebarAdmin from './components/SidebarAdmin';
@@ -63,8 +66,9 @@ function App() {
 
   return (
     <Router>
-      <PedidosProvider>
-        <div className="flex min-h-screen bg-white">
+      <ToastProvider>
+        <PedidosProvider>
+          <div className="flex min-h-screen bg-white">
           {/* Sidebar según el rol */}
           {isAdmin ? (
             <SidebarAdmin user={user} onLogout={handleLogout} />
@@ -85,6 +89,8 @@ function App() {
               {isAdmin ? (
                 <>
                   <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/productos" element={<Productos />} />
+                  <Route path="/inventario" element={<Inventario />} />
                   <Route path="/asignaciones" element={<Asignaciones />} />
                   <Route path="/rendimiento" element={<Rendimiento />} />
                   <Route path="*" element={<Navigate to="/dashboard" />} />
@@ -97,8 +103,9 @@ function App() {
               )}
             </Routes>
           </Suspense>
-        </div>
-      </PedidosProvider>
+          </div>
+        </PedidosProvider>
+      </ToastProvider>
     </Router>
   );
 }

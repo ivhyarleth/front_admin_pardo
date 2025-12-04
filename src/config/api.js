@@ -49,6 +49,22 @@ export const API_ENDPOINTS = {
     CALCULAR: `${API_BASE_URL}/kpis/calcular`, // POST - Calcular KPIs
     CONSULTAR: `${API_BASE_URL}/kpis/consultar`, // GET - Consultar KPIs
   },
+
+  // 📦 PRODUCTOS
+  PRODUCTOS: {
+    OBTENER: `${API_BASE_URL}/producto/obtener`, // GET - Obtener todos los productos
+    OBTENER_POR_ID: `${API_BASE_URL}/producto`, // GET - Obtener producto por ID (se agrega /{producto_id})
+    CREAR: `${API_BASE_URL}/producto`, // POST - Crear producto
+    ACTUALIZAR: `${API_BASE_URL}/producto`, // PUT - Actualizar producto (se agrega /{producto_id})
+    ELIMINAR: `${API_BASE_URL}/producto`, // DELETE - Eliminar producto (se agrega /{producto_id})
+  },
+
+  // 📋 INVENTARIO
+  INVENTARIO: {
+    CONSULTAR: `${API_BASE_URL}/inventario/consultar`, // POST - Consultar inventario
+    AJUSTAR: `${API_BASE_URL}/inventario/ajustar`, // POST - Ajustar inventario
+  },
+
 };
 
 // ============================================
@@ -577,6 +593,231 @@ export const getMetricasTiemposAPI = async (sedeId, fecha = null) => {
     return data;
   } catch (error) {
     console.error('Error en getMetricasTiemposAPI:', error);
+    throw error;
+  }
+};
+
+// ============================================
+// 📦 FUNCIONES DE PRODUCTOS
+// ============================================
+
+// Obtener todos los productos
+export const getProductosAPI = async (tenantId = null, filters = {}) => {
+  try {
+    const params = new URLSearchParams();
+    
+    // Agregar filtros opcionales
+    if (filters.tipo) params.append('tipo', filters.tipo);
+    if (filters.is_active !== undefined) params.append('is_active', filters.is_active);
+    if (filters.sortBy) params.append('sortBy', filters.sortBy);
+    if (filters.sortOrder) params.append('sortOrder', filters.sortOrder);
+    if (filters.limit) params.append('limit', filters.limit);
+    if (filters.cursor) params.append('cursor', filters.cursor);
+    
+    const queryString = params.toString();
+    const endpoint = queryString 
+      ? `${API_ENDPOINTS.PRODUCTOS.OBTENER}?${queryString}`
+      : API_ENDPOINTS.PRODUCTOS.OBTENER;
+    
+    const response = await fetch(endpoint, {
+      method: 'GET',
+      headers: getAuthHeaders(tenantId)
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || 'Error obteniendo productos');
+    }
+    
+    return {
+      productos: data.productos || [],
+      pagination: data.pagination || { limit: filters.limit || 20, has_more: false, next_cursor: null }
+    };
+  } catch (error) {
+    console.error('Error en getProductosAPI:', error);
+    throw error;
+  }
+};
+
+// Obtener producto por ID
+export const getProductoByIdAPI = async (productoId, tenantId = null) => {
+  try {
+    const response = await fetch(`${API_ENDPOINTS.PRODUCTOS.OBTENER_POR_ID}/${productoId}`, {
+      method: 'GET',
+      headers: getAuthHeaders(tenantId)
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || 'Error obteniendo producto');
+    }
+    
+    return data.producto;
+  } catch (error) {
+    console.error('Error en getProductoByIdAPI:', error);
+    throw error;
+  }
+};
+
+// Crear producto
+export const createProductoAPI = async (productoData, tenantId = null) => {
+  try {
+    const response = await fetch(API_ENDPOINTS.PRODUCTOS.CREAR, {
+      method: 'POST',
+      headers: getAuthHeaders(tenantId),
+      body: JSON.stringify(productoData)
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || 'Error creando producto');
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Error en createProductoAPI:', error);
+    throw error;
+  }
+};
+
+// Actualizar producto
+export const updateProductoAPI = async (productoId, productoData, tenantId = null) => {
+  try {
+    const response = await fetch(`${API_ENDPOINTS.PRODUCTOS.ACTUALIZAR}/${productoId}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(tenantId),
+      body: JSON.stringify(productoData)
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || 'Error actualizando producto');
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Error en updateProductoAPI:', error);
+    throw error;
+  }
+};
+
+// Eliminar producto
+export const deleteProductoAPI = async (productoId, tenantId = null) => {
+  try {
+    const response = await fetch(`${API_ENDPOINTS.PRODUCTOS.ELIMINAR}/${productoId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(tenantId)
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || 'Error eliminando producto');
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Error en deleteProductoAPI:', error);
+    throw error;
+  }
+};
+
+// ============================================
+// 📋 FUNCIONES DE INVENTARIO
+// ============================================
+
+// Consultar inventario
+export const consultarInventarioAPI = async (tenantId = null, productoId = null, limit = 20, cursor = null) => {
+  try {
+    const body = {};
+    if (productoId) {
+      body.producto_id = productoId;
+    }
+    if (limit) {
+      body.limit = limit;
+    }
+    if (cursor) {
+      body.cursor = cursor;
+    }
+    
+    const response = await fetch(API_ENDPOINTS.INVENTARIO.CONSULTAR, {
+      method: 'POST',
+      headers: getAuthHeaders(tenantId),
+      body: JSON.stringify(body)
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || 'Error consultando inventario');
+    }
+    
+    return {
+      inventario: data.inventario || [],
+      pagination: data.pagination || { limit, has_more: false, next_cursor: null }
+    };
+  } catch (error) {
+    console.error('Error en consultarInventarioAPI:', error);
+    throw error;
+  }
+};
+
+// Ajustar inventario
+export const ajustarInventarioAPI = async (ajusteData, tenantId = null) => {
+  try {
+    const response = await fetch(API_ENDPOINTS.INVENTARIO.AJUSTAR, {
+      method: 'POST',
+      headers: getAuthHeaders(tenantId),
+      body: JSON.stringify(ajusteData)
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || 'Error ajustando inventario');
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Error en ajustarInventarioAPI:', error);
+    throw error;
+  }
+};
+
+// ============================================
+// 📊 FUNCIONES DE KPIs (adicionales)
+// ============================================
+
+// Calcular KPIs
+export const calcularKPIsAPI = async (tenantId = null, fecha = null) => {
+  try {
+    const body = {
+      tenant_id: tenantId || getSelectedSede()
+    };
+    
+    if (fecha) {
+      body.fecha = fecha;
+    }
+    
+    const response = await fetch(API_ENDPOINTS.KPIS.CALCULAR, {
+      method: 'POST',
+      headers: getAuthHeaders(tenantId),
+      body: JSON.stringify(body)
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || 'Error calculando KPIs');
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Error en calcularKPIsAPI:', error);
     throw error;
   }
 };

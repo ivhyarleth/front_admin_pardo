@@ -280,58 +280,58 @@ const Rendimiento = () => {
                       </p>
                     </div>
                   ) : (
-                    <div className="grid lg:grid-cols-2 gap-8">
-                      {/* Panel Izquierdo - Estadísticas */}
-                      <div className="space-y-4">
-                        {/* Estadística: Pedidos */}
+                  <div className="grid lg:grid-cols-2 gap-8">
+                    {/* Panel Izquierdo - Estadísticas */}
+                    <div className="space-y-4">
+                      {/* Estadística: Pedidos */}
                         <Card className="bg-white border-2 border-pardos-rust shadow-lg">
                           <CardContent className="p-6">
-                            <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between">
                               <div>
                                 <CardDescription className="text-gray-600 mb-1 font-bold">PEDIDOS</CardDescription>
                                 <CardTitle className="text-black text-4xl font-black">
                                   {kpi.numero_pedidos}
                                 </CardTitle>
                                 <p className="text-gray-600 text-sm mt-1 font-bold">Nº PEDIDOS</p>
-                              </div>
+                        </div>
                               <div className="text-6xl opacity-30">📦</div>
-                            </div>
+                      </div>
                           </CardContent>
                         </Card>
 
-                        {/* Estadística: Ingresos */}
+                      {/* Estadística: Ingresos */}
                         <Card className="bg-white border-2 border-green-600 shadow-lg">
                           <CardContent className="p-6">
-                            <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between">
                               <div>
                                 <CardDescription className="text-gray-600 mb-1 font-bold">INGRESOS TOTALES</CardDescription>
                                 <CardTitle className="text-black text-4xl font-black">
                                   S/ {kpi.ingresos_dia.toFixed(2)}
                                 </CardTitle>
                                 <p className="text-gray-600 text-sm mt-1 font-bold">TOTAL SOLES</p>
-                              </div>
+                        </div>
                               <div className="text-6xl opacity-30">💰</div>
-                            </div>
+                      </div>
                           </CardContent>
                         </Card>
 
-                        {/* Estadística: Ticket */}
+                      {/* Estadística: Ticket */}
                         <Card className="bg-white border-2 border-blue-600 shadow-lg">
                           <CardContent className="p-6">
-                            <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between">
                               <div>
                                 <CardDescription className="text-gray-600 mb-1 font-bold">TICKET PROMEDIO</CardDescription>
                                 <CardTitle className="text-black text-4xl font-black">
                                   S/ {kpi.ticket_promedio.toFixed(2)}
                                 </CardTitle>
                                 <p className="text-gray-600 text-sm mt-1 font-bold">PROMEDIO POR PEDIDO</p>
-                              </div>
+                        </div>
                               <div className="text-6xl opacity-30">🎫</div>
-                            </div>
+                      </div>
                           </CardContent>
                         </Card>
 
-                        {/* Top 3 Productos */}
+                      {/* Top 3 Productos */}
                         <Card className="bg-white border-2 border-pardos-brown shadow-lg">
                           <CardContent className="p-6">
                             <CardTitle className="text-black text-xl mb-4 text-center font-bold">
@@ -349,10 +349,10 @@ const Rendimiento = () => {
                                       <span className="font-spartan font-black text-lg text-pardos-rust bg-pardos-rust/10 px-3 py-1 rounded">
                                         {producto.cantidad_vendida || 0} ventas
                                       </span>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
+                        </div>
+                            </div>
+                          ))}
+                        </div>
                             ) : (
                               <p className="text-center text-gray-600 font-lato">
                                 No hay productos vendidos
@@ -360,14 +360,14 @@ const Rendimiento = () => {
                             )}
                           </CardContent>
                         </Card>
-                      </div>
+                    </div>
 
-                      {/* Panel Derecho - Gráfico */}
-                      <div>
+                    {/* Panel Derecho - Gráfico */}
+                    <div>
                         <Card className="border-2 border-gray-200">
                           <CardHeader className="bg-pardos-rust text-white">
                             <CardTitle className="text-white text-xl text-center">
-                              GRÁFICO DE PEDIDOS POR HORA
+                          GRÁFICO DE PEDIDOS POR HORA
                             </CardTitle>
                           </CardHeader>
                           <CardContent className="p-6">
@@ -592,7 +592,7 @@ const Rendimiento = () => {
                               </div>
                             </CardContent>
                           </Card>
-                        </div>
+                      </div>
                       </TabsContent>
 
                       {/* Tab: Ingresos por Hora */}
@@ -605,7 +605,7 @@ const Rendimiento = () => {
                             </CardHeader>
                             <CardContent>
                               {kpi.ingresos_por_hora && kpi.ingresos_por_hora.length > 0 && kpi.ingresos_por_hora.some(h => h.ingresos > 0) ? (
-                                <ResponsiveContainer width="100%" height={400}>
+                        <ResponsiveContainer width="100%" height={400}>
                                   <AreaChart data={kpi.ingresos_por_hora}>
                                     <defs>
                                       <linearGradient id={`colorIngresos-${sede.id}`} x1="0" y1="0" x2="0" y2="1">
@@ -670,10 +670,10 @@ const Rendimiento = () => {
                               {kpi.metodos_pago && kpi.metodos_pago.length > 0 ? (
                                 <ResponsiveContainer width="100%" height={300}>
                                   <BarChart data={kpi.metodos_pago}>
-                                    <CartesianGrid strokeDasharray="3 3" />
+                            <CartesianGrid strokeDasharray="3 3" />
                                     <XAxis dataKey="metodo" />
-                                    <YAxis />
-                                    <Tooltip />
+                            <YAxis />
+                            <Tooltip />
                                     <Legend />
                                     <Bar dataKey="cantidad" fill="#F2B10C" name="Cantidad de Pedidos" />
                                     <Bar dataKey="ingresos" fill="#8B4513" name="Ingresos (S/)" />
@@ -933,8 +933,8 @@ const Rendimiento = () => {
                                           contentStyle={{ backgroundColor: '#fff', border: '1px solid #ccc', borderRadius: '8px' }}
                                         />
                                         <Bar dataKey="promedio" fill="#3b82f6" name="Tiempo Promedio" />
-                                      </BarChart>
-                                    </ResponsiveContainer>
+                          </BarChart>
+                        </ResponsiveContainer>
                                   </CardContent>
                                 </Card>
                               )}
@@ -1006,9 +1006,9 @@ const Rendimiento = () => {
                                               <span className="ml-2 font-spartan font-black text-xl text-red-600">
                                                 {formatTiempo(pedido.tiempo_total_segundos)}
                                               </span>
-                                            </div>
-                                          </div>
-                                        </div>
+                      </div>
+                    </div>
+                  </div>
                                         
                                         {/* Tabla de Estados del Pedido */}
                                         <div className="overflow-x-auto">
@@ -1106,14 +1106,14 @@ const Rendimiento = () => {
                                 </CardContent>
                               </Card>
                             )}
-                          </div>
+                </div>
                         );
                       })()
                     )}
                   </CardContent>
                 )}
               </Card>
-            )}
+              )}
             </div>
           );
         })}
