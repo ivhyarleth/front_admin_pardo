@@ -48,6 +48,8 @@ const Productos = () => {
     reason: '',
   });
   const [deletingId, setDeletingId] = useState(null);
+  const [filtroCategoria, setFiltroCategoria] = useState('todas');
+  const [categorias, setCategorias] = useState([]);
   const user = getUserData();
   const selectedSede = user?.tenant_id_sede || getSelectedSede();
 
@@ -70,7 +72,17 @@ const Productos = () => {
         consultarInventarioAPI(selectedSede)
       ]);
       
-      setProductos(productosResponse.productos || []);
+      const productosList = productosResponse.productos || [];
+      setProductos(productosList);
+      
+      // Extraer categorías únicas de los productos
+      const categoriasUnicas = [...new Set(
+        productosList
+          .map(p => p.tipo_producto || p.categoria || p.tipo)
+          .filter(Boolean)
+      )].sort();
+      setCategorias(categoriasUnicas);
+      
       setPagination(prev => ({
         ...prev,
         limit,
@@ -112,7 +124,7 @@ const Productos = () => {
       setEditingProducto(producto);
       setFormData({
         nombre_producto: producto.nombre_producto || '',
-        descripcion: producto.descripcion || '',
+        descripcion: producto.descripcion_producto || '',
         precio_producto: producto.precio_producto?.toString() || '',
         tipo: producto.tipo || 'comida',
         is_active: producto.is_active !== false,
@@ -147,7 +159,7 @@ const Productos = () => {
     try {
       const productoData = {
         nombre_producto: formData.nombre_producto,
-        descripcion: formData.descripcion,
+        descripcion_producto: formData.descripcion,
         precio_producto: parseFloat(formData.precio_producto),
         tipo: formData.tipo,
         is_active: formData.is_active,
@@ -258,14 +270,50 @@ const Productos = () => {
 
         <Card>
           <CardContent className="p-0">
-            {productos.length === 0 ? (
+            {/* Filtro por categoría */}
+            {productos.length > 0 && categorias.length > 0 && (
+              <div className="p-4 border-b bg-gray-50">
+                <div className="flex items-center gap-4">
+                  <label className="font-spartan font-semibold text-sm text-gray-700">
+                    Filtrar por categoría:
+                  </label>
+                  <Select
+                    value={filtroCategoria}
+                    onChange={(e) => setFiltroCategoria(e.target.value)}
+                    className="w-64"
+                  >
+                    <option value="todas">Todas las categorías</option>
+                    {categorias.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
+            )}
+            
+            {(() => {
+              // Filtrar productos por categoría
+              const productosFiltrados = filtroCategoria === 'todas' 
+                ? productos 
+                : productos.filter(p => {
+                    const categoriaProducto = p.tipo_producto || p.categoria || p.tipo;
+                    return categoriaProducto === filtroCategoria;
+                  });
+              
+              return productosFiltrados.length === 0 ? (
               <div className="p-12 text-center">
                 <p className="text-gray-500 font-lato text-lg mb-4">
-                  No hay productos registrados
+                  {filtroCategoria === 'todas' 
+                    ? 'No hay productos registrados'
+                    : `No hay productos en la categoría "${filtroCategoria}"`}
                 </p>
-                <Button onClick={() => handleOpenDialog()}>
-                  Crear Primer Producto
-                </Button>
+                {filtroCategoria === 'todas' && (
+                  <Button onClick={() => handleOpenDialog()}>
+                    Crear Primer Producto
+                  </Button>
+                )}
               </div>
             ) : (
               <Table>
@@ -273,24 +321,26 @@ const Productos = () => {
                   <TableRow>
                     <TableHead>Nombre</TableHead>
                     <TableHead>Descripción</TableHead>
-                    <TableHead>Tipo</TableHead>
+                    <TableHead>Categoría</TableHead>
                     <TableHead>Precio</TableHead>
                     <TableHead>Estado</TableHead>
                     <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {productos.map((producto) => (
+                  {productosFiltrados.map((producto) => {
+                    const categoriaProducto = producto.tipo_producto || producto.categoria || producto.tipo || '-';
+                    return (
                     <TableRow key={producto.producto_id}>
                       <TableCell className="font-spartan font-medium">
                         {producto.nombre_producto}
                       </TableCell>
                       <TableCell className="max-w-xs truncate">
-                        {producto.descripcion || '-'}
+                        {producto.descripcion_producto || '-'}
                       </TableCell>
                       <TableCell>
                         <Badge variant={producto.tipo === 'comida' ? 'default' : 'secondary'}>
-                          {producto.tipo}
+                          {categoriaProducto}
                         </Badge>
                       </TableCell>
                       <TableCell className="font-spartan font-bold">
@@ -328,19 +378,30 @@ const Productos = () => {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
-            )}
+            );
+            })()}
           </CardContent>
         </Card>
         
         {/* Paginación */}
-        {productos.length > 0 && (
-          <div className="mt-4 flex justify-between items-center">
-            <div className="text-sm text-gray-600 font-lato">
-              Mostrando {productos.length} producto{productos.length !== 1 ? 's' : ''}
-            </div>
+        {productos.length > 0 && (() => {
+          const productosFiltrados = filtroCategoria === 'todas' 
+            ? productos 
+            : productos.filter(p => {
+                const categoriaProducto = p.tipo_producto || p.categoria || p.tipo;
+                return categoriaProducto === filtroCategoria;
+              });
+          
+          return (
+            <div className="mt-4 flex justify-between items-center">
+              <div className="text-sm text-gray-600 font-lato">
+                Mostrando {productosFiltrados.length} de {productos.length} producto{productos.length !== 1 ? 's' : ''}
+                {filtroCategoria !== 'todas' && ` (filtrado por: ${filtroCategoria})`}
+              </div>
             <div className="flex gap-2">
               <Button
                 variant="outline"
@@ -358,7 +419,8 @@ const Productos = () => {
               </Button>
             </div>
           </div>
-        )}
+          );
+        })()}
       </div>
 
       {/* Dialog para crear/editar producto */}
